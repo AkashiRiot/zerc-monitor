@@ -1,0 +1,267 @@
+<!--
+  zERC20 流動性・目標・手数料モニター
+  Copyright (c) 2026 AkashiRiot。MIT License。独自実装（UI/CSS/目標T・wrap報酬計算）。
+  定数の出所（一次情報）:
+    - LiquidityManager / zERC20 アドレス: zERC20 公式 docs
+        https://zerc20.gitbook.io/zerc20/reference/addresses
+    - 手数料・報酬モデル(k=10%, 償還0.35%): zERC20 公式 docs
+        https://zerc20.gitbook.io/zerc20/for-users/fees-and-rewards
+    - USDC / USDC.e トークンアドレス: Circle 公式 (https://www.circle.com/multi-chain-usdc) / 各チェーン公式
+  ライブラリ: ethers.js (c) Richard Moore — MIT License。
+-->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>zERC20 流動性・目標・手数料モニター</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --border:#30363d; --text:#e6edf3;
+    --muted:#8b949e; --accent:#58a6ff; --good:#3fb950; --warn:#d29922; --bad:#f85149;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,"Segoe UI",Roboto,"Hiragino Kaku Gothic ProN",Meiryo,sans-serif;
+    background:var(--bg);color:var(--text);line-height:1.5;padding:24px;}
+  h1{font-size:20px;margin:0 0 4px}
+  .sub{color:var(--muted);font-size:13px;margin-bottom:20px}
+  .grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:16px;}
+  .panel h2{font-size:15px;margin:0 0 12px;display:flex;align-items:center;gap:8px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{padding:7px 8px;text-align:right;border-bottom:1px solid var(--border)}
+  th:first-child,td:first-child{text-align:left}
+  th{color:var(--muted);font-weight:600}
+  tr:last-child td{border-bottom:none}
+  .tot td{font-weight:700;border-top:2px solid var(--border)}
+  .badge{font-size:11px;padding:2px 7px;border-radius:99px;font-weight:600}
+  .b-good{background:rgba(63,185,80,.15);color:var(--good)}
+  .b-zero{background:rgba(139,148,158,.15);color:var(--muted)}
+  .b-warn{background:rgba(210,153,34,.15);color:var(--warn)}
+  .controls{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:16px}
+  .controls label{font-size:13px;color:var(--muted)}
+  input,select,button{background:#0d1117;color:var(--text);border:1px solid var(--border);
+    border-radius:6px;padding:6px 10px;font-size:13px}
+  button{cursor:pointer;background:var(--accent);color:#fff;border:none;font-weight:600}
+  button:disabled{opacity:.5;cursor:default}
+  .status{font-size:12px;color:var(--muted);margin-left:auto}
+  .note{font-size:12px;color:var(--muted);margin-top:10px}
+  .formula{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;background:#0d1117;
+    border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:#c9d1d9;overflow-x:auto}
+  .reward{color:var(--good);font-weight:700}
+  .muted{color:var(--muted)}
+  a{color:var(--accent)}
+  .err{color:var(--bad)}
+</style>
+</head>
+<body>
+  <h1>zERC20 流動性・目標・手数料モニター</h1>
+  <div class="sub">LiquidityManager のオンチェーン残高を RPC で取得し、目標値（target）と wrap 報酬を概算します。
+    <span id="updated"></span></div>
+
+  <div class="controls">
+    <button id="refresh" onclick="refresh()">更新</button>
+    <label>自動更新
+      <select id="auto">
+        <option value="0">オフ</option>
+        <option value="30">30秒</option>
+        <option value="60" selected>60秒</option>
+        <option value="120">120秒</option>
+      </select>
+    </label>
+    <label>入金ETH <input id="depEth" type="number" value="1" min="0" step="0.1" style="width:80px"></label>
+    <label>入金USDC <input id="depUsdc" type="number" value="1000" min="0" step="100" style="width:90px"></label>
+    <label>目標比率 <input id="ratio" type="number" value="80" min="1" max="100" step="1" style="width:60px">%</label>
+    <label>ETH価格$ <input id="ethPrice" type="number" value="1750" min="0" step="10" style="width:80px"></label>
+    <span class="status" id="status">準備中…</span>
+  </div>
+
+  <div class="grid">
+    <div class="panel">
+      <h2>🟣 zETH 流動性</h2>
+      <table id="ethTable"><thead><tr><th>チェーン</th><th>残高(ETH)</th><th>目標(ETH)</th><th>状態</th></tr></thead><tbody></tbody></table>
+    </div>
+    <div class="panel">
+      <h2>🔵 zUSDC 流動性</h2>
+      <table id="usdcTable"><thead><tr><th>チェーン</th><th>残高(USDC)</th><th>目標(USDC)</th><th>状態</th></tr></thead><tbody></tbody></table>
+    </div>
+  </div>
+
+  <div class="grid" style="margin-top:16px">
+    <div class="panel">
+      <h2>💰 入金 <span id="depEthLbl">1</span> ETH の wrap 報酬</h2>
+      <table id="rewEth"><thead><tr><th>チェーン</th><th>報酬(ETH)</th><th>率</th><th>USD換算</th></tr></thead><tbody></tbody></table>
+      <div class="note">最善チェーン: <span id="bestEth" class="reward">—</span></div>
+    </div>
+    <div class="panel">
+      <h2>💵 入金 <span id="depUsdcLbl">1000</span> USDC の wrap 報酬</h2>
+      <table id="rewUsdc"><thead><tr><th>チェーン</th><th>報酬(USDC)</th><th>率</th><th>USD換算</th></tr></thead><tbody></tbody></table>
+      <div class="note">最善チェーン: <span id="bestUsdc" class="reward">—</span></div>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-top:16px">
+    <h2>📐 計算式と前提</h2>
+    <div class="formula">wrap報酬 = ∫[L→min(L+D,T)] k·(1 − x/T) dx = k·[ dEff − ((L+dEff)² − L²)/(2T) ]　（L≥T なら 0）<br>
+    目標 T = (全チェーン合計 ÷ チェーン数) × 比率　／　k = 10%（zETH・zUSDC）</div>
+    <div class="note">
+      ・入金者が得られるのは <b>wrap 報酬のみ</b>。プライベート送金の <b>償還手数料 0.35%（最大1%）はプロトコル収入</b>で入金者には入りません。<br>
+      ・wrap 報酬は過去の unwrap 手数料の余剰プールから支払われるため、余剰が枯渇していると満額もらえないことがあります。<br>
+      ・USDC.e は報酬対象外（zUSDC/zETH/zBNB のみ）。USD換算は USDC=$1、ETH=上記入力値で計算。<br>
+      ・データ元: LiquidityManager（zUSDC <code>0x04be…D477</code> / zETH <code>0xcC10…0CF0</code>）の各チェーン残高。
+      参考: <a href="https://zerc20.gitbook.io/zerc20/for-users/fees-and-rewards" target="_blank">zERC20 Fees and Rewards</a>。
+    </div>
+  </div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.4/ethers.umd.min.js"
+  integrity="sha512-V3xRGsQMQ8CG4l2gVN44TCDmNY5cdlxbSvejrgmWxcLKHft0Q3XQDbeuJ9aot14mpNuRWGtI//WKraedDGNZ+g=="
+  crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script>
+// LiquidityManager（全チェーン共通）: 出所 zERC20 公式 docs
+// https://zerc20.gitbook.io/zerc20/reference/addresses
+const LM = {
+  zUSDC: "0x04be137Df79bE7B5F3314C4a84D1C5E0d99BD477",
+  zETH:  "0xcC10b7098FEf1aB2f0FF3bE91d2A7B3230b90CF0",
+};
+const RPC = {
+  ethereum: ["https://ethereum.publicnode.com","https://rpc.ankr.com/eth","https://1rpc.io/eth"],
+  base:     ["https://mainnet.base.org","https://base.publicnode.com"],
+  arbitrum: ["https://arb1.arbitrum.io/rpc","https://arbitrum.publicnode.com"],
+};
+// USDC トークン（各チェーンの正規アドレス）: 出所 Circle 公式 https://www.circle.com/multi-chain-usdc
+const USDC = {
+  ethereum: { address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", decimals: 6 },
+  base:     { address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", decimals: 6 },
+  arbitrum: { address: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831", decimals: 6 },
+};
+const USDCE_ARB = { address: "0xFF970A61A04b1cA14834A43f5dE4533eBDDB5CC8", decimals: 6 };
+const ERC20_ABI = ["function balanceOf(address) view returns (uint256)"];
+const CHAINS = ["ethereum","base","arbitrum"];
+const LABEL = { ethereum:"Ethereum", base:"Base", arbitrum:"Arbitrum" };
+const K = 0.10;
+
+let autoTimer = null;
+
+function providerFor(chain){
+  for(const url of RPC[chain]){
+    try { return new ethers.JsonRpcProvider(url, undefined, { staticNetwork: true }); } catch(e){}
+  }
+  return null;
+}
+async function withFallback(chain, fn){
+  let lastErr;
+  for(const url of RPC[chain]){
+    try {
+      const p = new ethers.JsonRpcProvider(url, undefined, { staticNetwork: true });
+      return await fn(p);
+    } catch(e){ lastErr = e; }
+  }
+  throw lastErr;
+}
+async function ethBal(chain){
+  return Number(ethers.formatEther(await withFallback(chain, p => p.getBalance(LM.zETH))));
+}
+async function usdcBal(chain, tok){
+  return await withFallback(chain, async p => {
+    const c = new ethers.Contract(tok.address, ERC20_ABI, p);
+    return Number(ethers.formatUnits(await c.balanceOf(LM.zUSDC), tok.decimals));
+  });
+}
+
+// 報酬 = ∫[L→min(L+D,T)] k(1-x/T)dx
+function wrapReward(L, D, T){
+  if(L >= T || D <= 0) return 0;
+  const upper = Math.min(L + D, T);
+  const dEff = upper - L;
+  return K * ( dEff - (upper*upper - L*L)/(2*T) );
+}
+
+function fmt(n, d=4){ return Number(n).toLocaleString(undefined,{maximumFractionDigits:d}); }
+
+function renderLiquidity(tableId, balances, T, unit){
+  const tb = document.querySelector(`#${tableId} tbody`); tb.innerHTML="";
+  let total=0;
+  for(const c of CHAINS){
+    const L = balances[c]; total += L;
+    let badge;
+    if(L >= T) badge = '<span class="badge b-zero">過剰・報酬0</span>';
+    else if(L >= T*0.95) badge = '<span class="badge b-warn">ほぼ目標</span>';
+    else badge = '<span class="badge b-good">報酬あり</span>';
+    tb.insertAdjacentHTML("beforeend",
+      `<tr><td>${LABEL[c]}</td><td>${fmt(L,unit==="ETH"?4:2)}</td><td>${fmt(T,unit==="ETH"?4:2)}</td><td>${badge}</td></tr>`);
+  }
+  tb.insertAdjacentHTML("beforeend",
+    `<tr class="tot"><td>合計</td><td>${fmt(total,unit==="ETH"?4:2)}</td><td colspan="2" class="muted">÷3×比率 = 目標</td></tr>`);
+  return total;
+}
+
+function renderReward(tableId, bestId, balances, T, D, unit, usd){
+  const tb = document.querySelector(`#${tableId} tbody`); tb.innerHTML="";
+  let best={chain:null,r:-1};
+  for(const c of CHAINS){
+    const L = balances[c];
+    const r = wrapReward(L, D, T);
+    const rate = D>0 ? (r/D*100) : 0;
+    if(r > best.r) best = {chain:c, r, rate};
+    const cls = r>0 ? 'class="reward"' : 'class="muted"';
+    tb.insertAdjacentHTML("beforeend",
+      `<tr><td>${LABEL[c]}</td><td ${cls}>${fmt(r,unit==="ETH"?5:2)}</td><td>${fmt(rate,2)}%</td><td>$${fmt(r*usd,2)}</td></tr>`);
+  }
+  const el = document.getElementById(bestId);
+  if(best.r > 0)
+    el.innerHTML = `${LABEL[best.chain]} … ${fmt(best.r,unit==="ETH"?5:2)} ${unit}（${fmt(best.rate,2)}% / $${fmt(best.r*usd,2)}）`;
+  else
+    el.innerHTML = `<span class="muted">どのチェーンも目標超過のため報酬 0</span>`;
+}
+
+async function refresh(){
+  const btn = document.getElementById("refresh"); btn.disabled=true;
+  const st = document.getElementById("status"); st.textContent="取得中…"; st.className="status";
+  const ratio = (Number(document.getElementById("ratio").value)||80)/100;
+  const dEth = Number(document.getElementById("depEth").value)||0;
+  const dUsdc = Number(document.getElementById("depUsdc").value)||0;
+  const ethUsd = Number(document.getElementById("ethPrice").value)||0;
+  document.getElementById("depEthLbl").textContent = fmt(dEth,4);
+  document.getElementById("depUsdcLbl").textContent = fmt(dUsdc,2);
+  try{
+    const [e1,e2,e3,u1,u2,u3] = await Promise.all([
+      ethBal("ethereum"), ethBal("base"), ethBal("arbitrum"),
+      usdcBal("ethereum",USDC.ethereum), usdcBal("base",USDC.base), usdcBal("arbitrum",USDC.arbitrum),
+    ]);
+    const ethBalances  = { ethereum:e1, base:e2, arbitrum:e3 };
+    const usdcBalances = { ethereum:u1, base:u2, arbitrum:u3 };
+
+    const ethTotal  = e1+e2+e3;
+    const usdcTotal = u1+u2+u3;
+    const Teth  = ethTotal /CHAINS.length * ratio;
+    const Tusdc = usdcTotal/CHAINS.length * ratio;
+
+    renderLiquidity("ethTable",  ethBalances,  Teth,  "ETH");
+    renderLiquidity("usdcTable", usdcBalances, Tusdc, "USDC");
+    renderReward("rewEth","bestEth",   ethBalances,  Teth,  dEth,  "ETH",  ethUsd);
+    renderReward("rewUsdc","bestUsdc", usdcBalances, Tusdc, dUsdc, "USDC", 1);
+
+    document.getElementById("updated").textContent = "（最終更新: "+new Date().toLocaleString()+"）";
+    st.textContent="OK"; st.className="status";
+  }catch(e){
+    st.textContent="取得失敗: "+(e.message||e); st.className="status err";
+  }finally{
+    btn.disabled=false;
+  }
+}
+
+document.getElementById("auto").addEventListener("change", e=>{
+  if(autoTimer){clearInterval(autoTimer); autoTimer=null;}
+  const s = Number(e.target.value);
+  if(s>0) autoTimer = setInterval(refresh, s*1000);
+});
+["depEth","depUsdc","ratio","ethPrice"].forEach(id=>
+  document.getElementById(id).addEventListener("change", refresh));
+
+// 起動
+refresh();
+const initAuto = Number(document.getElementById("auto").value);
+if(initAuto>0) autoTimer = setInterval(refresh, initAuto*1000);
+</script>
+</body>
+</html>
