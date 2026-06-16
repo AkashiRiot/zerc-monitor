@@ -52,7 +52,9 @@
   h1{font-size:22px;margin:0 0 6px;text-align:center;color:var(--accent-d);
     letter-spacing:.5px;text-shadow:var(--h1shadow);}
   .sub{color:var(--muted);font-size:13px;margin-bottom:22px;text-align:center}
-  .grid{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));}
+  .grid{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));}
+  .tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:14px}
+  .tablewrap th,.tablewrap td{white-space:nowrap}
   .panel{background:var(--panel);border:2px solid var(--border);border-radius:22px;padding:18px;
     box-shadow:0 8px 22px rgba(0,0,0,.08);}
   .panel h2{font-size:15px;margin:0 0 12px;color:var(--accent-d);font-weight:800}
@@ -92,6 +94,17 @@
     background:var(--panel);color:var(--text);border:2px solid var(--border);font-weight:700;
     box-shadow:0 4px 12px rgba(0,0,0,.12)}
   #themeToggle:hover{border-color:var(--accent);transform:translateY(-1px) scale(1.03)}
+  @media (max-width:600px){
+    body{padding:14px}
+    .grid{grid-template-columns:1fr;gap:14px}
+    .panel{padding:14px;border-radius:18px}
+    h1{font-size:19px}
+    table{font-size:12px}
+    th,td{padding:7px 6px}
+    .controls{padding:10px 12px;gap:10px}
+    #themeToggle{top:10px;right:10px;padding:6px 12px}
+    img[alt="zERC20 monitor"]{width:118px !important;height:118px !important}
+  }
 </style>
 </head>
 <body>
@@ -126,16 +139,16 @@
   <div class="grid">
     <div class="panel">
       <h2>🟣 zETH（入金 <span id="depEthLbl">1</span> ETH 時）</h2>
-      <table id="ethTable"><thead><tr>
+      <div class="tablewrap"><table id="ethTable"><thead><tr>
         <th>チェーン</th><th>流動性(ETH)</th><th>wrap報酬(ETH)</th><th>一回報酬率</th><th>$</th><th>unwrap手数料(ETH)</th>
-      </tr></thead><tbody></tbody></table>
+      </tr></thead><tbody></tbody></table></div>
       <div class="note">最善: <span id="bestEth" class="reward">—</span></div>
     </div>
     <div class="panel">
       <h2>🔵 zUSDC（入金 <span id="depUsdcLbl">1000</span> USDC 時）</h2>
-      <table id="usdcTable"><thead><tr>
+      <div class="tablewrap"><table id="usdcTable"><thead><tr>
         <th>チェーン</th><th>流動性(USDC)</th><th>wrap報酬(USDC)</th><th>一回報酬率</th><th>$</th><th>unwrap手数料(USDC)</th>
-      </tr></thead><tbody></tbody></table>
+      </tr></thead><tbody></tbody></table></div>
       <div class="note">最善: <span id="bestUsdc" class="reward">—</span></div>
     </div>
   </div>
