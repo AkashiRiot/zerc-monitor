@@ -16,50 +16,96 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>zERC20 流動性・手数料モニター（オンチェーン実値）</title>
+<script>
+  // チラつき防止: 描画前にテーマを適用
+  try{ var _t=localStorage.getItem("theme");
+    if(_t!=="dark"&&_t!=="light") _t=(window.matchMedia&&matchMedia("(prefers-color-scheme: dark)").matches)?"dark":"light";
+    document.documentElement.setAttribute("data-theme",_t);
+  }catch(e){}
+</script>
 <style>
   :root{
-    --bg:#0d1117; --panel:#161b22; --border:#30363d; --text:#e6edf3;
-    --muted:#8b949e; --accent:#58a6ff; --good:#3fb950; --warn:#d29922; --bad:#f85149;
+    --bg:#f5f6f8; --bg2:#edeef2; --panel:#ffffff; --border:#e4e6ec; --text:#5a606c;
+    --muted:#a3a8b4; --accent:#8d96a3; --accent-d:#535b67; --good:#4a9a7b;
+    --warn:#c08a3a; --bad:#c76b78; --lav:#9aa3b2;
+    --row:#f6f7f9; --rowhover:#eceef2; --code-bg:#eef0f3;
+    --h1shadow:0 2px 0 #fff,0 3px 6px rgba(0,0,0,.08);
+    --imgring:#ffffff;
+    --grad-a:#7d8693; --grad-b:#5b6470;
+  }
+  html[data-theme="dark"]{
+    --bg:#1c1d22; --bg2:#16171b; --panel:#24262d; --border:#363944; --text:#e6e8ee;
+    --muted:#9aa0ad; --accent:#8a93a1; --accent-d:#b3bcc8; --good:#5fc79c;
+    --warn:#d9a957; --bad:#e08793; --lav:#9aa3b2;
+    --row:#2a2d35; --rowhover:#31343d; --code-bg:#2a2d35;
+    --h1shadow:0 2px 6px rgba(0,0,0,.5);
+    --imgring:#2b2e36;
+    --grad-a:#5b6470; --grad-b:#414956;
   }
   *{box-sizing:border-box}
-  body{margin:0;font-family:system-ui,"Segoe UI",Roboto,"Hiragino Kaku Gothic ProN",Meiryo,sans-serif;
-    background:var(--bg);color:var(--text);line-height:1.5;padding:24px;}
-  h1{font-size:20px;margin:0 0 4px;text-align:center}
-  .sub{color:var(--muted);font-size:13px;margin-bottom:20px;text-align:center}
-  .grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));}
-  .panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:16px;}
-  .panel h2{font-size:15px;margin:0 0 12px}
-  table{width:100%;border-collapse:collapse;font-size:13px}
-  th,td{padding:7px 8px;text-align:right;border-bottom:1px solid var(--border)}
+  body{margin:0;
+    font-family:"Hiragino Maru Gothic ProN","Rounded Mplus 1c",Quicksand,"Segoe UI Rounded",
+      system-ui,"Hiragino Kaku Gothic ProN",Meiryo,sans-serif;
+    color:var(--text);line-height:1.7;padding:24px;
+    background:linear-gradient(160deg,var(--bg) 0%,var(--bg2) 100%);
+    background-attachment:fixed;transition:background .3s,color .3s;}
+  h1{font-size:22px;margin:0 0 6px;text-align:center;color:var(--accent-d);
+    letter-spacing:.5px;text-shadow:var(--h1shadow);}
+  .sub{color:var(--muted);font-size:13px;margin-bottom:22px;text-align:center}
+  .grid{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));}
+  .panel{background:var(--panel);border:2px solid var(--border);border-radius:22px;padding:18px;
+    box-shadow:0 8px 22px rgba(0,0,0,.08);}
+  .panel h2{font-size:15px;margin:0 0 12px;color:var(--accent-d);font-weight:800}
+  table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px;overflow:hidden;border-radius:14px}
+  th,td{padding:8px 10px;text-align:right;border-bottom:1px dashed var(--border)}
   th:first-child,td:first-child{text-align:left}
-  th{color:var(--muted);font-weight:600}
+  thead th{color:#fff;background:linear-gradient(180deg,var(--grad-a),var(--grad-b));font-weight:700;border-bottom:none}
+  thead th:first-child{border-top-left-radius:12px;border-bottom-left-radius:12px}
+  thead th:last-child{border-top-right-radius:12px;border-bottom-right-radius:12px}
+  tbody tr:nth-child(even) td{background:var(--row)}
+  tbody tr:hover td{background:var(--rowhover)}
   tr:last-child td{border-bottom:none}
-  .tot td{font-weight:700;border-top:2px solid var(--border)}
-  .controls{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:16px}
-  .controls label{font-size:13px;color:var(--muted)}
-  input,select,button{background:#0d1117;color:var(--text);border:1px solid var(--border);
-    border-radius:6px;padding:6px 10px;font-size:13px}
-  button{cursor:pointer;background:var(--accent);color:#fff;border:none;font-weight:600}
-  button:disabled{opacity:.5;cursor:default}
+  .tot td{font-weight:800;border-top:2px solid var(--border);background:var(--rowhover) !important;color:var(--accent-d)}
+  .controls{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:18px;
+    background:var(--panel);border:2px solid var(--border);border-radius:18px;
+    padding:12px 16px;box-shadow:0 6px 16px rgba(0,0,0,.07)}
+  .controls label{font-size:13px;color:var(--text)}
+  input,select,button{background:var(--panel);color:var(--text);border:2px solid var(--border);
+    border-radius:999px;padding:6px 12px;font-size:13px;font-family:inherit}
+  input:focus,select:focus{outline:none;border-color:var(--accent)}
+  button{cursor:pointer;background:linear-gradient(180deg,var(--grad-a),var(--grad-b));color:#fff;border:none;
+    font-weight:800;padding:8px 20px;box-shadow:0 4px 10px rgba(0,0,0,.18);transition:transform .1s}
+  button:hover{transform:translateY(-1px) scale(1.03)}
+  button:active{transform:translateY(0) scale(.98)}
+  button:disabled{opacity:.5;cursor:default;transform:none}
+  input[type=checkbox]{width:auto;accent-color:var(--accent-d)}
   .status{font-size:12px;color:var(--muted);margin-left:auto}
   .note{font-size:12px;color:var(--muted);margin-top:10px}
-  .reward{color:var(--good);font-weight:700}
+  .reward{color:var(--good);font-weight:800}
   .muted{color:var(--muted)}
-  a{color:var(--accent)}
+  a{color:var(--accent-d);text-decoration:none}
+  a:hover{text-decoration:underline}
   .err{color:var(--bad)}
-  code{background:#0d1117;border:1px solid var(--border);border-radius:4px;padding:1px 5px;font-size:12px}
+  code{background:var(--code-bg);border:1px solid var(--border);border-radius:8px;padding:1px 6px;font-size:12px;color:var(--accent-d)}
+  input[readonly]{opacity:.7}
+  #themeToggle{position:fixed;top:18px;right:18px;z-index:100;
+    background:var(--panel);color:var(--text);border:2px solid var(--border);font-weight:700;
+    box-shadow:0 4px 12px rgba(0,0,0,.12)}
+  #themeToggle:hover{border-color:var(--accent);transform:translateY(-1px) scale(1.03)}
 </style>
 </head>
 <body>
-  <div style="text-align:center;margin-bottom:16px">
+  <div style="text-align:center;margin-bottom:14px">
     <img src="img/06.png" alt="zERC20 monitor"
-      style="width:130px;height:130px;border-radius:50%;object-fit:cover;border:2px solid var(--border);box-shadow:0 2px 12px rgba(0,0,0,.4)">
+      style="width:140px;height:140px;border-radius:50%;object-fit:cover;
+        border:5px solid var(--imgring);outline:6px solid var(--accent);outline-offset:-1px;
+        box-shadow:0 8px 22px rgba(0,0,0,.22)">
   </div>
-  <h1>zERC20 流動性・手数料モニター <span style="font-size:12px;color:var(--good)">● オンチェーン実値</span></h1>
-  <div class="sub">報酬・手数料は LiquidityManager の <code>quoteWrapReward</code> / <code>quoteUnwrapFee</code> を直接呼び出して取得（推定式ではありません）。
-    <span id="updated"></span></div>
+  <h1>zERC20 流動性・手数料モニター<br><span style="font-size:12px;color:var(--good);font-weight:700">● オンチェーン実値</span></h1>
+  <div class="sub"><span id="updated"></span></div>
 
   <div class="controls">
+    <button id="themeToggle" type="button">🌙 ダーク</button>
     <button id="refresh" onclick="refresh()">更新</button>
     <label>自動更新
       <select id="auto">
@@ -97,6 +143,7 @@
   <div class="panel" style="margin-top:16px">
     <h2>📐 仕組みと注意</h2>
     <div class="note" style="margin-top:0">
+      ・報酬・手数料は LiquidityManager の <code>quoteWrapReward</code> / <code>quoteUnwrapFee</code> を直接呼び出して取得（推定式ではありません）。<br>
       ・<b>wrap報酬</b>（入金して得られる手数料）は、流動性が目標を下回るチェーンに入金したときのみ発生。値はコントラクトの <code>quoteWrapReward(入金額)</code> をそのまま表示。<br>
       ・<b>「一回報酬率」＝ wrap報酬 ÷ 入金額</b>。これは <u>その1回の入金に対する一括（スポット）報酬率であり、APR / APY（年利）ではありません</u>。保有しても増えず、wrap した瞬間に一度だけ受け取ります。<br>
       ・報酬は「目標までの不足分」に対してのみ付くため、流動性が目標に達していると入金額を増やしても<b>頭打ち（または 0）</b>になります。<br>
@@ -268,6 +315,24 @@ document.getElementById("autoPrice").addEventListener("change", e=>{
   document.getElementById("ethPrice").readOnly = e.target.checked; // 自動時は手入力不可
   refresh();
 });
+
+// ダークモード切替（localStorage に保存、初期は OS 設定に追従）
+function applyTheme(t){
+  document.documentElement.setAttribute("data-theme", t);
+  document.getElementById("themeToggle").textContent = t==="dark" ? "☀️ ライト" : "🌙 ダーク";
+  try{ localStorage.setItem("theme", t); }catch(e){}
+}
+function initTheme(){
+  let t=null; try{ t=localStorage.getItem("theme"); }catch(e){}
+  if(t!=="dark" && t!=="light")
+    t = (window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light";
+  applyTheme(t);
+}
+document.getElementById("themeToggle").addEventListener("click", ()=>{
+  const next = document.documentElement.getAttribute("data-theme")==="dark" ? "light" : "dark";
+  applyTheme(next);
+});
+initTheme();
 
 refresh();
 const initAuto = Number(document.getElementById("auto").value);
