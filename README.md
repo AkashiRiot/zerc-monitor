@@ -15,7 +15,8 @@
   - `quoteUnwrapFee(amount)` → **unwrap 手数料（実値）**
 
   を呼び出し、率・USD換算とともに表示。最善チェーンを提示します。
-- ETH 価格・入金額・自動更新（30/60/120 秒）を画面上で調整可能
+- ETH 価格は公開 API から**自動取得**（Coinbase →失敗時 CoinGecko）。チェックを外せば手入力も可能
+- 入金額・自動更新（30/60/120 秒）を画面上で調整可能
 
 ## 仕組み・注意
 
@@ -47,6 +48,7 @@
 - **USDC トークンアドレス**: Circle 公式 — <https://www.circle.com/multi-chain-usdc>
 - **ライブラリ**: [ethers.js](https://github.com/ethers-io/ethers.js) v6.13.4（MIT License, © Richard Moore）— cdnjs から SRI 付きで読み込み
 - **RPC**: 各チェーンの公開エンドポイント（PublicNode / Ankr / 1RPC / Base 公式 / Arbitrum 公式）
+- **ETH 価格 API**: [Coinbase](https://api.coinbase.com/v2/prices/ETH-USD/spot)（主）/ [CoinGecko](https://www.coingecko.com/)（予備）
 
 > 免責: 本ツールは情報提供のみを目的とし、投資助言ではありません。
 > RPC のレート制限・データの正確性はご自身でご確認ください。

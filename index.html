@@ -67,7 +67,9 @@
     </label>
     <label>入金ETH <input id="depEth" type="number" value="1" min="0" step="0.1" style="width:90px"></label>
     <label>入金USDC <input id="depUsdc" type="number" value="1000" min="0" step="100" style="width:100px"></label>
-    <label>ETH価格$ <input id="ethPrice" type="number" value="1750" min="0" step="10" style="width:90px"></label>
+    <label><input id="autoPrice" type="checkbox" checked> ETH価格 自動取得</label>
+    <label>ETH価格$ <input id="ethPrice" type="number" value="1750" min="0" step="10" style="width:90px" readonly></label>
+    <span class="muted" id="priceSrc" style="font-size:12px"></span>
     <span class="status" id="status">準備中…</span>
   </div>
 
@@ -95,7 +97,7 @@
       ・<b>「一回報酬率」＝ wrap報酬 ÷ 入金額</b>。これは <u>その1回の入金に対する一括（スポット）報酬率であり、APR / APY（年利）ではありません</u>。保有しても増えず、wrap した瞬間に一度だけ受け取ります。<br>
       ・報酬は「目標までの不足分」に対してのみ付くため、流動性が目標に達していると入金額を増やしても<b>頭打ち（または 0）</b>になります。<br>
       ・プライベート送金の償還手数料（既定 0.35%）は<b>プロトコル収入</b>で、入金者(wrapper)には入りません。<br>
-      ・<b>unwrap手数料</b>は出金（unwrap）時のコスト目安。$ 換算は USDC=$1、ETH=入力値。<br>
+      ・<b>unwrap手数料</b>は出金（unwrap）時のコスト目安。$ 換算は USDC=$1、ETH=自動取得価格（Coinbase→CoinGecko、チェックを外すと手入力可）。<br>
       ・データ元: LiquidityManager（zUSDC <code>0x04be…D477</code> / zETH <code>0xcC10…0CF0</code>、全チェーン共通）。
       参考: <a href="https://zerc20.gitbook.io/zerc20/for-developers/specs/contract-spec" target="_blank">contract-spec</a> /
       <a href="https://zerc20.gitbook.io/zerc20/for-users/fees-and-rewards" target="_blank">fees-and-rewards</a>。
@@ -167,6 +169,21 @@ async function fetchChain(chain, dEthWei, dUsdcUnits){
   });
 }
 
+// ETH価格を公開API（Coinbase→CoinGecko）から自動取得。失敗時は null
+async function fetchEthPrice(){
+  try{
+    const r = await fetch("https://api.coinbase.com/v2/prices/ETH-USD/spot");
+    const j = await r.json(); const v = Number(j?.data?.amount);
+    if(v>0) return { v, src:"Coinbase" };
+  }catch(e){}
+  try{
+    const r = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd");
+    const j = await r.json(); const v = Number(j?.ethereum?.usd);
+    if(v>0) return { v, src:"CoinGecko" };
+  }catch(e){}
+  return null;
+}
+
 function fmt(n, d){ return Number(n).toLocaleString(undefined,{maximumFractionDigits:d}); }
 const fE = (bn,d=8) => bn==null ? null : Number(ethers.formatEther(bn));
 const fU = (bn,d=6) => bn==null ? null : Number(ethers.formatUnits(bn,6));
@@ -209,6 +226,14 @@ async function refresh(){
   const st = document.getElementById("status"); st.textContent="取得中…"; st.className="status";
   const dEth  = Number(document.getElementById("depEth").value)||0;
   const dUsdc = Number(document.getElementById("depUsdc").value)||0;
+  // ETH価格: 自動取得ONなら取得して反映（失敗時は現在値を維持）
+  const srcEl = document.getElementById("priceSrc");
+  if(document.getElementById("autoPrice").checked){
+    const pr = await fetchEthPrice();
+    if(pr){ document.getElementById("ethPrice").value = pr.v.toFixed(2);
+            srcEl.textContent = `（${pr.src} 自動）`; }
+    else  { srcEl.textContent = "（自動取得失敗・前回値）"; }
+  } else { srcEl.textContent = "（手動）"; }
   const ethUsd = Number(document.getElementById("ethPrice").value)||0;
   document.getElementById("depEthLbl").textContent  = fmt(dEth,4);
   document.getElementById("depUsdcLbl").textContent = fmt(dUsdc,2);
@@ -234,6 +259,10 @@ document.getElementById("auto").addEventListener("change", e=>{
 });
 ["depEth","depUsdc","ethPrice"].forEach(id=>
   document.getElementById(id).addEventListener("change", refresh));
+document.getElementById("autoPrice").addEventListener("change", e=>{
+  document.getElementById("ethPrice").readOnly = e.target.checked; // 自動時は手入力不可
+  refresh();
+});
 
 refresh();
 const initAuto = Number(document.getElementById("auto").value);
