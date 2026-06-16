@@ -138,17 +138,17 @@
   <div class="grid">
     <div class="panel">
       <h2>🟣 zETH</h2>
-      <div class="unit">数量は <b>ETH</b> 建て（「$」列は USD 換算）／入金 <span id="depEthLbl">1</span> ETH 時</div>
+      <div class="unit">数量は <b>ETH</b> 建て／入金 <span id="depEthLbl">1</span> ETH 時</div>
       <div class="tablewrap"><table id="ethTable"><thead><tr>
-        <th>チェーン</th><th>流動性</th><th>報酬</th><th>一回報酬率</th><th>$</th><th>手数料</th>
+        <th>チェーン</th><th>流動性</th><th>報酬</th><th>報酬率</th><th>手数料</th>
       </tr></thead><tbody></tbody></table></div>
       <div class="note">最善: <span id="bestEth" class="reward">—</span></div>
     </div>
     <div class="panel">
       <h2>🔵 zUSDC</h2>
-      <div class="unit">数量は <b>USDC</b> 建て（「$」列は USD 換算）／入金 <span id="depUsdcLbl">1000</span> USDC 時</div>
+      <div class="unit">数量は <b>USDC</b> 建て／入金 <span id="depUsdcLbl">1000</span> USDC 時</div>
       <div class="tablewrap"><table id="usdcTable"><thead><tr>
-        <th>チェーン</th><th>流動性</th><th>報酬</th><th>一回報酬率</th><th>$</th><th>手数料</th>
+        <th>チェーン</th><th>流動性</th><th>報酬</th><th>報酬率</th><th>手数料</th>
       </tr></thead><tbody></tbody></table></div>
       <div class="note">最善: <span id="bestUsdc" class="reward">—</span></div>
     </div>
@@ -159,7 +159,7 @@
     <div class="note" style="margin-top:0">
       ・報酬・手数料は LiquidityManager の <code>quoteWrapReward</code> / <code>quoteUnwrapFee</code> を直接呼び出して取得（推定式ではありません）。<br>
       ・<b>wrap報酬</b>（入金して得られる手数料）は、流動性が目標を下回るチェーンに入金したときのみ発生。値はコントラクトの <code>quoteWrapReward(入金額)</code> をそのまま表示。<br>
-      ・<b>「一回報酬率」＝ wrap報酬 ÷ 入金額</b>。これは <u>その1回の入金に対する一括（スポット）報酬率であり、APR / APY（年利）ではありません</u>。保有しても増えず、wrap した瞬間に一度だけ受け取ります。<br>
+      ・<b>「報酬率」＝ wrap報酬 ÷ 入金額</b>。これは <u>その1回の入金に対する一括（スポット）報酬率であり、APR / APY（年利）ではありません</u>。保有しても増えず、wrap した瞬間に一度だけ受け取ります。<br>
       ・報酬は「目標までの不足分」に対してのみ付くため、流動性が目標に達していると入金額を増やしても<b>頭打ち（または 0）</b>になります。<br>
       ・プライベート送金の償還手数料（既定 0.35%）は<b>プロトコル収入</b>で、入金者(wrapper)には入りません。<br>
       ・<b>unwrap手数料</b>は出金（unwrap）時のコスト目安。$ 換算は USDC=$1、ETH=自動取得価格（Coinbase→失敗時 CoinGecko）。<br>
@@ -266,7 +266,6 @@ function renderRows(tableId, bestId, rows, isEth, dAmt, usdRate, decShow){
     const fee = isEth ? fE(d.fee) : fU(d.fee);
     if(liq!=null) totLiq += liq;
     const rate = (rew!=null && dAmt>0) ? rew/dAmt*100 : null;
-    const usd  = rew!=null ? rew*usdRate : null;
     if(rew!=null && rew > best.rew) best = {chain:r.chain, rew, rate};
     const rewCls = (rew!=null && rew>0) ? 'class="reward"' : 'class="muted"';
     tb.insertAdjacentHTML("beforeend",
@@ -275,12 +274,11 @@ function renderRows(tableId, bestId, rows, isEth, dAmt, usdRate, decShow){
         <td>${cell(liq, isEth?4:2)}</td>
         <td ${rewCls}>${cell(rew, decShow)}</td>
         <td>${rate==null?'—':fmt(rate,4)+'%'}</td>
-        <td>${usd==null?'—':'$'+fmt(usd,2)}</td>
         <td>${cell(fee, decShow)}</td>
       </tr>`);
   }
   tb.insertAdjacentHTML("beforeend",
-    `<tr class="tot"><td>合計流動性</td><td>${fmt(totLiq, isEth?4:2)}</td><td colspan="4"></td></tr>`);
+    `<tr class="tot"><td>合計流動性</td><td>${fmt(totLiq, isEth?4:2)}</td><td colspan="3"></td></tr>`);
   const el = document.getElementById(bestId);
   if(best.rew > 0)
     el.innerHTML = `${LABEL[best.chain]} … ${fmt(best.rew, decShow)} ${isEth?'ETH':'USDC'}（${fmt(best.rate,4)}% / $${fmt(best.rew*usdRate,2)}）`;
